@@ -1,0 +1,25 @@
+текст: 1,115,394 символов, алфавит 65, device=cuda, шагов=500
+
+=== обучаю: обычный трансформер (равен MoE по вычислениям) ===
+  [dense_big] шаг     1  ошибка на отложке 3.8110  3,697 символов/сек
+  [dense_big] шаг   250  ошибка на отложке 2.3180  38,444 символов/сек
+  [dense_big] шаг   500  ошибка на отложке 2.0950  38,417 символов/сек
+  [dense_big] ГОТОВО: ошибка 2.0947 (перплексия 8.1), параметры 2.18M (работает на токен 2.18M), 108 сек
+
+
+================ ИТОГИ ================
+обычный трансформер (равен MoE по вычислениям) ошибка 2.095 | перплексия    8.1 |  2.18M пар. (2.18M актив.) |  37,919 симв/сек
+
+================ ПРИМЕРЫ ГЕНЕРАЦИИ (после подсказки 'First Citizen:') ================
+
+----- обычный трансформер (равен MoE по вычислениям) -----
+First Citizen:
+I your thath lest of youre thims!
+
+Fird Cifard But dorserd my ithare wherrs
+den pomme a lind dout, yourse frak beart.
+
+BRUTHARK:
+Whe the most ban ant mee touth this have hat the
+Thee the thre own onth, the that thou bbands, pead thoush bald
+Omagof t ip cot isasusof

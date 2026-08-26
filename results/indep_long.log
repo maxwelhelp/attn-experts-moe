@@ -1,0 +1,13 @@
+device=cuda  steps=1600  seq=128  d=128  layers=4
+  [sequential_independent] step    1  ce  2.9496  aux 16.257
+  [sequential_independent] step  320  ce  1.8246  aux 16.019
+  [sequential_independent] step  640  ce  1.6113  aux 16.008
+  [sequential_independent] step  960  ce  1.6085  aux 16.004
+  [sequential_independent] step 1280  ce  1.6082  aux 16.007
+  [sequential_independent] step 1600  ce  1.6080  aux 16.002
+  [sequential_independent] DONE  final_ce=1.6085  (unigram≈2.773, copy-solved≈1.39)  params 7.41M / active 2.17M  829.0s
+
+saved -> /home/maxwelhelp/attn-experts-moe/results/demo_results.json
+
+=== summary ===
+sequential_independent   ce=  1.6085  total=7.41M  active/token=2.17M

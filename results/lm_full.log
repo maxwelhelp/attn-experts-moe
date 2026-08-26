@@ -1,0 +1,68 @@
+текст: 1,115,394 символов, алфавит 65, device=cuda, шагов=500
+
+=== обучаю: обычный трансформер ===
+  [dense] шаг     1  ошибка на отложке 3.9373  3,998 символов/сек
+  [dense] шаг   100  ошибка на отложке 2.4919  39,226 символов/сек
+  [dense] шаг   200  ошибка на отложке 2.4266  41,857 символов/сек
+  [dense] шаг   300  ошибка на отложке 2.3269  42,487 символов/сек
+  [dense] шаг   400  ошибка на отложке 2.2400  42,781 символов/сек
+  [dense] шаг   500  ошибка на отложке 2.2187  43,174 символов/сек
+  [dense] ГОТОВО: ошибка 2.2217 (перплексия 9.2), параметры 1.12M (работает на токен 1.12M), 96 сек
+
+=== обучаю: эксперты внимания+FFN (наша идея) ===
+  [moe_indep] шаг     1  ошибка на отложке 3.8564  421 символов/сек
+  [moe_indep] шаг   100  ошибка на отложке 2.3731  4,136 символов/сек
+  [moe_indep] шаг   200  ошибка на отложке 2.2916  4,385 символов/сек
+  [moe_indep] шаг   300  ошибка на отложке 2.2275  4,505 символов/сек
+  [moe_indep] шаг   400  ошибка на отложке 2.1591  4,618 символов/сек
+  [moe_indep] шаг   500  ошибка на отложке 2.1362  4,703 символов/сек
+  [moe_indep] ГОТОВО: ошибка 2.1393 (перплексия 8.5), параметры 7.42M (работает на токен 2.18M), 888 сек
+
+=== обучаю: эксперты-проекции (JetMoE-стиль) ===
+  [moe_proj] шаг     1  ошибка на отложке 3.8196  445 символов/сек
+  [moe_proj] шаг   100  ошибка на отложке 2.4968  4,520 символов/сек
+  [moe_proj] шаг   200  ошибка на отложке 2.4377  4,840 символов/сек
+  [moe_proj] шаг   300  ошибка на отложке 2.3600  5,449 символов/сек
+  [moe_proj] шаг   400  ошибка на отложке 2.2876  5,848 символов/сек
+  [moe_proj] шаг   500  ошибка на отложке 2.2626  6,170 символов/сек
+  [moe_proj] ГОТОВО: ошибка 2.2714 (перплексия 9.7), параметры 6.63M (работает на токен 1.92M), 676 сек
+
+
+================ ИТОГИ ================
+эксперты внимания+FFN (наша идея)      ошибка 2.139 | перплексия    8.5 |  7.42M пар. (2.18M актив.) |   4,613 симв/сек
+обычный трансформер                    ошибка 2.222 | перплексия    9.2 |  1.12M пар. (1.12M актив.) |  42,638 симв/сек
+эксперты-проекции (JetMoE-стиль)       ошибка 2.271 | перплексия    9.7 |  6.63M пар. (1.92M актив.) |   6,060 симв/сек
+
+================ ПРИМЕРЫ ГЕНЕРАЦИИ (после подсказки 'First Citizen:') ================
+
+----- обычный трансформер -----
+First Citizen:
+I t mo thay rith are youller imy!
+Meard that mee und &ferd my ith as wod;
+
+Nose wony thelings mow, you shift,
+Fou reass mol you had he spim the noouth tee stined.
+
+JYshor qust doau coner; wis ow and heake itht the stheaths,
+Fe dow oush ball thegourt ip cth iseaus s
+
+----- эксперты внимания+FFN (наша идея) -----
+First Citizen:
+I your thath le now the seer if as hirdour ave.
+
+SICINIUS:
+If ithare whe thede thonte a linds mow,
+This ther the treassen lay he mand weall he splouth,
+ee st thy thathaly que ndsauee this wre oulls,
+Thathe that t wethe the ope dow of he all the of-men;
+cel is, weno
+
+----- эксперты-проекции (JetMoE-стиль) -----
+First Citizen:
+I ther thay rith arche coner imsas herd ucal mee und &eerd my
+Anot he be theden wonte a linds mat,
+Thisse frat be reassengl yof hid hen sims my noouthave.
+
+BULAMIO:
+Yo I las thesau con how'se ou an,
+That fithar thast bands ope, mo oush bal wamagourowin cel isasusof

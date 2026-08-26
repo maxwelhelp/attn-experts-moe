@@ -1,0 +1,25 @@
+текст: 1,115,394 символов, алфавит 65, device=cuda, шагов=30
+
+=== обучаю: эксперты внимания+FFN (наша идея) ===
+  [moe_indep] шаг     1  ошибка на отложке 3.8564  492 символов/сек
+  [moe_indep] шаг    30  ошибка на отложке 2.9057  3,507 символов/сек
+  [moe_indep] ГОТОВО: ошибка 2.9101 (перплексия 18.4), параметры 7.42M (работает на токен 2.18M), 84 сек
+
+
+================ ИТОГИ ================
+эксперты внимания+FFN (наша идея)      ошибка 2.910 | перплексия   18.4 |  7.42M пар. (2.18M актив.) |   2,919 симв/сек
+
+================ ПРИМЕРЫ ГЕНЕРАЦИИ (после подсказки 'First Citizen:') ================
+Traceback (most recent call last):
+  File "/home/maxwelhelp/attn-experts-moe/train_lm.py", line 213, in <module>
+    main()
+  File "/home/maxwelhelp/attn-experts-moe/train_lm.py", line 207, in main
+    s = (Path(__file__).parent / "results" / f"sample_{r['config']}").read_text()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1029, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/maxwelhelp/attn-experts-moe/results/sample_moe_indep'

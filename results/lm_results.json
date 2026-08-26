@@ -1,0 +1,21 @@
+[
+  {
+    "config": "moe_indep",
+    "val_loss_final": 2.9101,
+    "val_curve": [
+      {
+        "step": 1,
+        "val": 3.8564
+      },
+      {
+        "step": 30,
+        "val": 2.9057
+      }
+    ],
+    "params_total_M": 7.42,
+    "params_active_M": 2.18,
+    "train_seconds": 66.2,
+    "chars_per_second": 3711,
+    "perplexity": 18.4
+  }
+]

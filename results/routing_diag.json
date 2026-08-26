@@ -1,0 +1,150 @@
+[
+  {
+    "tag": "с балансировкой (aux=0.01)",
+    "aux": 0.01,
+    "final_ce": 2.687,
+    "final_linear_share": 0.539,
+    "seconds": 333,
+    "history": [
+      {
+        "step": 1,
+        "ce": 2.954,
+        "linear_share": 0.515
+      },
+      {
+        "step": 25,
+        "ce": 2.725,
+        "linear_share": 0.467
+      },
+      {
+        "step": 50,
+        "ce": 2.694,
+        "linear_share": 0.537
+      },
+      {
+        "step": 75,
+        "ce": 2.7,
+        "linear_share": 0.452
+      },
+      {
+        "step": 100,
+        "ce": 2.692,
+        "linear_share": 0.564
+      },
+      {
+        "step": 125,
+        "ce": 2.697,
+        "linear_share": 0.507
+      },
+      {
+        "step": 150,
+        "ce": 2.692,
+        "linear_share": 0.547
+      },
+      {
+        "step": 175,
+        "ce": 2.691,
+        "linear_share": 0.502
+      },
+      {
+        "step": 200,
+        "ce": 2.689,
+        "linear_share": 0.664
+      },
+      {
+        "step": 225,
+        "ce": 2.693,
+        "linear_share": 0.494
+      },
+      {
+        "step": 250,
+        "ce": 2.694,
+        "linear_share": 0.429
+      },
+      {
+        "step": 275,
+        "ce": 2.688,
+        "linear_share": 0.524
+      },
+      {
+        "step": 300,
+        "ce": 2.687,
+        "linear_share": 0.539
+      }
+    ]
+  },
+  {
+    "tag": "без балансировки (aux=0)",
+    "aux": 0.0,
+    "final_ce": 2.688,
+    "final_linear_share": 0.588,
+    "seconds": 314,
+    "history": [
+      {
+        "step": 1,
+        "ce": 2.954,
+        "linear_share": 0.515
+      },
+      {
+        "step": 25,
+        "ce": 2.718,
+        "linear_share": 0.447
+      },
+      {
+        "step": 50,
+        "ce": 2.698,
+        "linear_share": 0.594
+      },
+      {
+        "step": 75,
+        "ce": 2.696,
+        "linear_share": 0.591
+      },
+      {
+        "step": 100,
+        "ce": 2.689,
+        "linear_share": 0.472
+      },
+      {
+        "step": 125,
+        "ce": 2.69,
+        "linear_share": 0.59
+      },
+      {
+        "step": 150,
+        "ce": 2.691,
+        "linear_share": 0.466
+      },
+      {
+        "step": 175,
+        "ce": 2.691,
+        "linear_share": 0.588
+      },
+      {
+        "step": 200,
+        "ce": 2.688,
+        "linear_share": 0.586
+      },
+      {
+        "step": 225,
+        "ce": 2.694,
+        "linear_share": 0.583
+      },
+      {
+        "step": 250,
+        "ce": 2.688,
+        "linear_share": 0.585
+      },
+      {
+        "step": 275,
+        "ce": 2.688,
+        "linear_share": 0.588
+      },
+      {
+        "step": 300,
+        "ce": 2.688,
+        "linear_share": 0.588
+      }
+    ]
+  }
+]

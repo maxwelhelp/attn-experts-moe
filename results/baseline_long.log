@@ -1,0 +1,21 @@
+device=cuda  steps=1600  seq=128  d=128  layers=4
+  [sequential_projection] step    1  ce  2.9801  aux 16.282
+  [sequential_projection] step  320  ce  2.6887  aux 16.136
+  [sequential_projection] step  640  ce  2.4217  aux 16.088
+  [sequential_projection] step  960  ce  2.1390  aux 16.115
+  [sequential_projection] step 1280  ce  1.4507  aux 16.257
+  [sequential_projection] step 1600  ce  1.3972  aux 16.302
+  [sequential_projection] DONE  final_ce=1.3975  (unigram≈2.773, copy-solved≈1.39)  params 6.63M / active 1.91M  986.1s
+  [mixed_independent] step    1  ce  3.0416  aux 16.167
+  [mixed_independent] step  320  ce  2.6887  aux 12.051
+  [mixed_independent] step  640  ce  2.6881  aux 12.052
+  [mixed_independent] step  960  ce  2.6866  aux 12.014
+  [mixed_independent] step 1280  ce  2.6871  aux 12.004
+  [mixed_independent] step 1600  ce  2.6868  aux 12.003
+  [mixed_independent] DONE  final_ce=2.6870  (unigram≈2.773, copy-solved≈1.39)  params 7.41M / active 2.17M  670.3s
+
+saved -> /home/maxwelhelp/attn-experts-moe/results/demo_results.json
+
+=== summary ===
+sequential_projection    ce=  1.3975  total=6.63M  active/token=1.91M
+mixed_independent        ce=  2.6870  total=7.41M  active/token=2.17M

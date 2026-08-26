@@ -1,0 +1,20 @@
+текст: 1,115,394 символов, алфавит 65, device=cuda, шагов=30
+
+=== обучаю: эксперты внимания+FFN (наша идея) ===
+  [moe_indep] шаг     1  ошибка на отложке 3.8564  538 символов/сек
+  [moe_indep] шаг    30  ошибка на отложке 2.9057  4,647 символов/сек
+  [moe_indep] ГОТОВО: ошибка 2.9101 (перплексия 18.4), параметры 7.42M (работает на токен 2.18M), 66 сек
+
+
+================ ИТОГИ ================
+эксперты внимания+FFN (наша идея)      ошибка 2.910 | перплексия   18.4 |  7.42M пар. (2.18M актив.) |   3,711 симв/сек
+
+================ ПРИМЕРЫ ГЕНЕРАЦИИ (после подсказки 'First Citizen:') ================
+
+----- эксперты внимания+FFN (наша идея) -----
+First Citizen:
+k tVerhelaihr thn octeZ iner imyas herdou.
+T xtBNurd &e md ml
+AIhthe wudornlden ronor a lindweale,ty idse fr tnbeYrcaLs
+n:l y he rd he ss ms m an oOtha.eeV t tiMI
+ks s urlqs tndsau eonnhoU're oa annth,atheitche te sthbands ope, No othhs al wamegoj-owipoctt Ds, - o 
