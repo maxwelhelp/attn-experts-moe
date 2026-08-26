@@ -244,6 +244,25 @@ def test_router_learns_to_prefer_capable_expert():
     assert share_good > 0.6, f"роутер не предпочёл способного эксперта: {share_good:.2f}"
 
 
+def test_proj_router_causal_and_grads():
+    """«Роутер видит проекцию»: бегущее среднее строго каузально, градиент
+    доходит до проекции контекста."""
+    from src.moe import SparseMoE, make_ffn_pool
+    torch.manual_seed(0)
+    moe = SparseMoE(32, make_ffn_pool(32, 2, mult=2), [TYPE_FFN] * 2,
+                    top_k=1, proj_router=True)
+    x = torch.randn(2, 24, 32)
+    out1 = moe(x)
+    xp = x.clone()
+    xp[:, 16:] += 3.0
+    out2 = moe(xp)
+    leak = (out1[:, :16] - out2[:, :16]).abs().max()
+    assert leak.item() < 1e-5, f"проекция роутера течёт из будущего: {leak}"
+    out1.square().mean().backward()
+    assert moe.ctx_proj.weight.grad is not None and \
+        moe.ctx_proj.weight.grad.abs().sum() > 0, "нет градиента у ctx_proj"
+
+
 def test_active_param_estimate_sane():
     m = tiny_model(layout="mixed")
     total, active = m.num_params(False), m.num_params(True)

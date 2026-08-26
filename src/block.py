@@ -62,6 +62,7 @@ class BlockConfig:
     hier_block_size: int = 32           # блок иерархического внимания
     hier_top_blocks: int = 3            # top-k прошлых блоков в гейте
     hier_loop_iters: int = 1            # итерации уточнения с фиксированным V
+    proj_router: bool = False           # роутер внимания видит дешёвую проекцию контекста
     # mixed-pool quotas (layout='mixed'): {type: k}
     mixed_ks: Optional[Dict[str, int]] = None   # default {'ffn': ffn_top_k, 'attn': 1}
     # routing / extras
@@ -162,6 +163,7 @@ class DualMoEBlock(nn.Module):
                     [TYPE_ATTN] * cfg.num_attn_experts,
                     top_k=cfg.attn_top_k, norm_topk_prob=cfg.norm_topk_prob,
                     aux_coef=cfg.aux_coef, z_loss_coef=cfg.z_loss_coef,
+                    proj_router=cfg.proj_router,
                 )
             self.ffn = SparseMoE(
                 cfg.dim,

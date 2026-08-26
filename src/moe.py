@@ -39,14 +39,21 @@ class SparseMoE(nn.Module):
         aux_coef: float = 1e-2,
         z_loss_coef: float = 1e-3,
         shared_expert: Optional[nn.Module] = None,
+        proj_router: bool = False,
     ):
         super().__init__()
         types = list(expert_types) if expert_types is not None else [TYPE_FFN] * len(experts)
         assert len(types) == len(experts)
         self.experts = nn.ModuleList(experts)
         self.types = types
+        # «Роутер видит проекцию»: к признакам токена добавляется каузальное
+        # бегущее среднее спроецированного прошлого ctx_t = mean_{s<=t}(W x_s).
+        # Дёшево (O(T*d)), строго каузально, даёт гейту глобальный контекст --
+        # идея «роутер читает дешёвую проекцию» из иерархической схемы.
+        self.ctx_proj = nn.Linear(dim, dim, bias=False) if proj_router else None
+        router_dim = dim * 2 if proj_router else dim
         self.router = TopKRouter(
-            dim, len(experts),
+            router_dim, len(experts),
             top_k=top_k,
             expert_types=types if typed_ks is not None else None,
             typed_ks=typed_ks,
@@ -61,8 +68,14 @@ class SparseMoE(nn.Module):
     # ------------------------------------------------------------- forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:               # [B,T,D]
         B, T, D = x.shape
-        flat = x.reshape(B * T, D)
-        rr = self.router(flat)
+        flat = x.reshape(B * T, D)                    # вход экспертов: D
+        r_in = flat
+        if self.ctx_proj is not None:
+            proj = self.ctx_proj(x)                                   # [B,T,D]
+            ctx = proj.cumsum(dim=1) / torch.arange(
+                1, T + 1, device=x.device, dtype=x.dtype).view(1, T, 1)
+            r_in = torch.cat([x, ctx], dim=-1).reshape(B * T, 2 * D)
+        rr = self.router(r_in)
         self.last_route = rr
 
         K = rr.idx.shape[-1]

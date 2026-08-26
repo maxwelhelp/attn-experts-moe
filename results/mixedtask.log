@@ -1,0 +1,60 @@
+  [win4] шаг    1 ce 2.927 линейные 0%
+  [win4] шаг   50 ce 2.638 линейные 0%
+  [win4] шаг  100 ce 2.626 линейные 0%
+  [win4] шаг  150 ce 2.620 линейные 0%
+  [win4] шаг  200 ce 2.578 линейные 0%
+  [win4] шаг  250 ce 2.489 линейные 0%
+  [win4] шаг  300 ce 2.409 линейные 0%
+  [win4] шаг  350 ce 2.345 линейные 0%
+  [win4] шаг  400 ce 2.344 линейные 0%
+  [win4] ГОТОВО ce=2.344 копия=2.168 мода=2.556 линейные=0%
+
+  [mixed] шаг    1 ce 2.927 линейные 47%
+  [mixed] шаг   50 ce 2.688 линейные 38%
+  [mixed] шаг  100 ce 2.616 линейные 56%
+  [mixed] шаг  150 ce 2.586 линейные 48%
+  [mixed] шаг  200 ce 2.577 линейные 55%
+  [mixed] шаг  250 ce 2.505 линейные 51%
+  [mixed] шаг  300 ce 2.528 линейные 55%
+  [mixed] шаг  350 ce 2.468 линейные 57%
+  [mixed] шаг  400 ce 2.391 линейные 56%
+  [mixed] ГОТОВО ce=2.391 копия=2.485 мода=2.38 линейные=56%
+
+Traceback (most recent call last):
+  File "/home/maxwelhelp/attn-experts-moe/exp_mixedtask.py", line 170, in <module>
+    ensure_ascii=False))
+
+  File "/home/maxwelhelp/attn-experts-moe/exp_mixedtask.py", line 158, in main
+    plan = [("win4", ("window",) * 4, False),
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/attn-experts-moe/exp_mixedtask.py", line 117, in run
+    _, met = model(x, y)
+             ^^^^^^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/attn-experts-moe/src/model.py", line 61, in forward
+    x = blk(x)
+        ^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/attn-experts-moe/src/block.py", line 207, in forward
+    x = x + self.attn(self.ln1(x))
+            ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/main/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/maxwelhelp/attn-experts-moe/src/moe.py", line 105, in forward
+    attn_full[e] = expert.forward_batch(x).reshape(B * T, D)
+^^^^^^^^^
+RuntimeError: The expanded size of the tensor (256) must match the existing size (128) at non-singleton dimension 1.  Target sizes: [1968, 256].  Tensor sizes: [1968, 128]
