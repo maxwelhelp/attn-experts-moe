@@ -110,6 +110,8 @@ class TinyCausalLM(nn.Module):
                     ka = cfg.attn_top_k
                     n += blk.attn.router.gate.weight.numel() + ka * blk.attn.experts[0].weight.numel()
                     n += blk.attn.wo.weight.numel()
+                elif not hasattr(blk.attn, "router"):      # напр. HierRefineAttention
+                    n += sum(p.numel() for p in blk.attn.parameters())
                 else:
                     moes.append((blk.attn, {TYPE_ATTN: cfg.attn_top_k}))
                 moes.append((blk.ffn, {TYPE_FFN: cfg.ffn_top_k}))

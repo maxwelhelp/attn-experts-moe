@@ -59,6 +59,9 @@ class BlockConfig:
     attn_topk_keys: int = 8
     proj_attn_heads: int = 4            # heads of the shared kernel (projection kind)
     attn_expert_kinds: Optional[tuple] = None   # явный состав пула, напр. ('window','linear')
+    hier_block_size: int = 32           # блок иерархического внимания
+    hier_top_blocks: int = 3            # top-k прошлых блоков в гейте
+    hier_loop_iters: int = 1            # итерации уточнения с фиксированным V
     # mixed-pool quotas (layout='mixed'): {type: k}
     mixed_ks: Optional[Dict[str, int]] = None   # default {'ffn': ffn_top_k, 'attn': 1}
     # routing / extras
@@ -133,7 +136,16 @@ class DualMoEBlock(nn.Module):
         )
 
         if self.layout == "sequential":
-            if cfg.attn_kind == "projection":
+            if cfg.attn_kind == "hier":
+                from .hier import HierConfig, HierRefineAttention
+                self.attn = HierRefineAttention(
+                    HierConfig(dim=cfg.dim,
+                               n_heads=max(4, cfg.attn_heads_per_expert),
+                               block_size=cfg.hier_block_size,
+                               top_blocks=cfg.hier_top_blocks,
+                               loop_iters=cfg.hier_loop_iters),
+                    dropout=cfg.dropout)
+            elif cfg.attn_kind == "projection":
                 self.attn = ProjectionMoEAttention(
                     cfg.dim, n_heads=cfg.proj_attn_heads,
                     num_experts=cfg.num_attn_experts, top_k=cfg.attn_top_k,
@@ -193,6 +205,8 @@ class DualMoEBlock(nn.Module):
             x = x + self.attn(self.ln1(x))
             x = x + self.ffn(self.ln2(x))
             for m in (self.attn, self.ffn):
+                if not hasattr(m, "last_route"):        # напр. HierRefineAttention
+                    continue
                 r = m.router.last if isinstance(m, ProjectionMoEAttention) else m.last_route
                 if r is not None:
                     self.last_aux.append(r.aux_loss)
