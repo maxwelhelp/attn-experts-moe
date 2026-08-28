@@ -85,7 +85,7 @@ def run(tag, kinds, proj, args):
         dim=args.d_model, num_ffn_experts=8, ffn_top_k=2,
         num_attn_experts=len(kinds), attn_top_k=2,
         attn_expert_kinds=kinds, window=args.seq_len // 2 + 8,
-        proj_router=proj)
+        proj_router=proj, attn_select_frac=getattr(args, "select_frac", 1.0))
     cfg = ModelConfig(vocab_size=args.vocab_hi + 2, max_seq_len=args.seq_len * 2,
                       num_layers=args.layers, block=blk, layouts=("sequential",))
     model = TinyCausalLM(cfg).to(args.device)
@@ -130,6 +130,7 @@ def run(tag, kinds, proj, args):
            "linear_share": round(linear_share(model), 3),
            "ce_copy": round(subset_ce(0), 3), "ce_mode": round(subset_ce(1), 3),
            "params": model.num_params(), "sec": round(time.time() - t0),
+           "select_frac": getattr(args, "select_frac", 1.0),
            "history": hist}
     print(f"  [{tag}] ГОТОВО ce={res['ce']} копия={res['ce_copy']} "
           f"мода={res['ce_mode']} линейные={res['linear_share']:.0%}\n",
@@ -148,6 +149,8 @@ def main():
     p.add_argument("--lr", type=float, default=3e-3)
     p.add_argument("--seed", type=int, default=11)
     p.add_argument("--device", default="auto")
+    p.add_argument("--select-frac", type=float, default=1.0,
+                   help="v2: доля токенов в дорогом уточнении внимания")
     p.add_argument("--only", nargs="*", default=None,
                    choices=["win4", "mixed", "mixed_proj"],
                    help="запустить только эти конфиги")

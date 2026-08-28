@@ -66,14 +66,78 @@ class SparseMoE(nn.Module):
         self.last_route = None
 
     # ------------------------------------------------------------- forward
+    @staticmethod
+    def _causal_ctx(x: torch.Tensor, proj: Optional[nn.Linear]) -> torch.Tensor:
+        """Каузальное бегущее среднее спроецированного прошлого [B,T,D]."""
+        if proj is None:
+            return None
+        p = proj(x)
+        return p.cumsum(dim=1) / torch.arange(
+            1, x.shape[1] + 1, device=x.device, dtype=x.dtype).view(1, -1, 1)
+
+    def forward_rows(self, x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """Вклад пула только в выбранных запросах: x [B,T,D], keep [B,T] bool.
+
+        Незабранные позиции получают ноль (residual их проводит без изменений).
+        Оконные/top-k эксперты считают ТОЛЬКО выбранные строки против полных
+        K/V (точный путь forward_selected) -- здесь настоящая экономия FLOPs;
+        линейные эксперты всё равно сканируют всю последовательность, им
+        дешевле плотный путь.
+        """
+        B, T, D = x.shape
+        out = torch.zeros_like(x)
+
+        r_feat = torch.cat([x, self._causal_ctx(x, self.ctx_proj)], dim=-1) \
+            if self.ctx_proj is not None else x
+
+        rr = self.router(r_feat.reshape(B * T, -1)[keep.reshape(B * T)])
+        self.last_route = rr
+
+        K = rr.idx.shape[-1]
+        flat_idx = rr.idx.reshape(-1)
+        order = torch.argsort(flat_idx, stable=True)
+        w_sorted = rr.weights.reshape(-1)[order].to(x.dtype)
+
+        counts = torch.bincount(flat_idx, minlength=len(self.experts))
+        offsets = torch.zeros(len(self.experts) + 1, dtype=torch.long,
+                              device=x.device)
+        torch.cumsum(counts, 0, out=offsets[1:])
+        bounds = offsets.tolist()
+
+        # глобальные id выбранных токенов в порядке сортировки по экспертам
+        # (каждый выбранный токен занимает K слотов роутера)
+        gidx_all = keep.reshape(B * T).nonzero(as_tuple=False).squeeze(-1)
+        tok_sorted = gidx_all.repeat_interleave(K)[order]
+
+        for e, expert in enumerate(self.experts):
+            s0, s1 = bounds[e], bounds[e + 1]
+            if s1 <= s0:
+                continue
+            rows = tok_sorted[s0:s1]
+            wts = w_sorted[s0:s1]
+            if isinstance(expert, AttentionExpert) \
+                    and getattr(expert, "pattern", None) in ("window", "topk"):
+                b_of = torch.div(rows, T, rounding_mode="floor")
+                t_of = rows % T
+                for b in range(B):                    # точный путь по строкам
+                    m = b_of == b
+                    if m.any():
+                        rb = t_of[m]
+                        val = expert.forward_selected(x[b], rb)
+                        out[b].index_put_((rb,), val * wts[m][:, None],
+                                          accumulate=True)
+            else:                                     # дешёвые: плотно один раз
+                full = expert(x.reshape(B, T, D)).reshape(B * T, D)
+                out.view(B * T, D).index_put_((rows,), full.index_select(0, rows)
+                                              * wts[:, None], accumulate=True)
+        return out
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:               # [B,T,D]
         B, T, D = x.shape
         flat = x.reshape(B * T, D)                    # вход экспертов: D
         r_in = flat
-        if self.ctx_proj is not None:
-            proj = self.ctx_proj(x)                                   # [B,T,D]
-            ctx = proj.cumsum(dim=1) / torch.arange(
-                1, T + 1, device=x.device, dtype=x.dtype).view(1, T, 1)
+        ctx = self._causal_ctx(x, self.ctx_proj)
+        if ctx is not None:
             r_in = torch.cat([x, ctx], dim=-1).reshape(B * T, 2 * D)
         rr = self.router(r_in)
         self.last_route = rr

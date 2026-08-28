@@ -263,6 +263,45 @@ def test_proj_router_causal_and_grads():
         moe.ctx_proj.weight.grad.abs().sum() > 0, "нет градиента у ctx_proj"
 
 
+def test_selective_attention_sparse_causal_grads():
+    """v2: пул внимания считает только выбранные строки; незабранные позиции
+    получают ровно ноль; каузальность; градиент доходит до гейта выбора."""
+    from src.block import BlockConfig, DualMoEBlock
+    torch.manual_seed(0)
+    cfg = BlockConfig(dim=32, num_ffn_experts=2, ffn_top_k=1,
+                      num_attn_experts=2, attn_top_k=1,
+                      attn_expert_kinds=("window", "window"), window=8,
+                      proj_router=True, attn_select_frac=0.5)
+    blk = DualMoEBlock(cfg, layout="sequential").eval()
+
+    # разреженность: forward_rows пишет только в выбранные позиции
+    h = blk.ln1(torch.randn(2, 24, 32))
+    keep = torch.zeros(2, 24, dtype=torch.bool)
+    keep[0, [0, 5, 11, 23]] = True
+    keep[1, [1, 4, 9, 20]] = True
+    with torch.no_grad():
+        att = blk.attn.forward_rows(h, keep)
+    assert (att[0][~keep[0]] == 0).all() and (att[1][~keep[1]] == 0).all(), \
+        "невыбранные позиции не нулевые"
+    assert torch.isfinite(att[keep]).all()
+
+    # каузальность блока целиком
+    x = torch.randn(2, 32, 32)
+    with torch.no_grad():
+        o1 = blk(x)
+        xp = x.clone()
+        xp[:, 20:] += 5.0
+        o2 = blk(xp)
+    leak = (o1[:, :20] - o2[:, :20]).abs().max()
+    assert leak.item() < 1e-4, f"селективное внимание течёт: {leak}"
+
+    # градиент гейта выбора
+    blk.train()
+    blk(x).square().mean().backward()
+    assert blk.sel_gate.weight.grad is not None and \
+        blk.sel_gate.weight.grad.abs().sum() > 0, "нет градиента у sel_gate"
+
+
 def test_active_param_estimate_sane():
     m = tiny_model(layout="mixed")
     total, active = m.num_params(False), m.num_params(True)

@@ -114,6 +114,8 @@ class TinyCausalLM(nn.Module):
                     n += sum(p.numel() for p in blk.attn.parameters())
                 else:
                     moes.append((blk.attn, {TYPE_ATTN: cfg.attn_top_k}))
+                if getattr(blk, "sel_gate", None) is not None:
+                    n += sum(p.numel() for p in blk.sel_gate.parameters())
                 moes.append((blk.ffn, {TYPE_FFN: cfg.ffn_top_k}))
             else:
                 moes.append((blk.mixed, dict(cfg.mixed_ks or

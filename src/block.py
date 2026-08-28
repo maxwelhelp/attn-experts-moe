@@ -63,6 +63,7 @@ class BlockConfig:
     hier_top_blocks: int = 3            # top-k прошлых блоков в гейте
     hier_loop_iters: int = 1            # итерации уточнения с фиксированным V
     proj_router: bool = False           # роутер внимания видит дешёвую проекцию контекста
+    attn_select_frac: float = 1.0       # v2: доля токенов, попадающих в дорогое уточнение
     # mixed-pool quotas (layout='mixed'): {type: k}
     mixed_ks: Optional[Dict[str, int]] = None   # default {'ffn': ffn_top_k, 'attn': 1}
     # routing / extras
@@ -175,6 +176,11 @@ class DualMoEBlock(nn.Module):
                 shared_expert=shared,
             )
             self.ln1, self.ln2 = RMSNorm(cfg.dim), RMSNorm(cfg.dim)
+            # v2: «уточнение только где выбрано» -- гейт оставляет долю
+            # attn_select_frac токенов, пул внимания считает только их.
+            self.attn_select_frac = getattr(cfg, "attn_select_frac", 1.0)
+            self.sel_gate = nn.Linear(cfg.dim * 2, 1) \
+                if self.attn_select_frac < 1.0 else None
 
         else:  # mixed: one pool, typed quotas
             ks = cfg.mixed_ks or {"ffn": cfg.ffn_top_k, "attn": 1}
@@ -204,7 +210,32 @@ class DualMoEBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.last_aux, self.last_z = [], []
         if self.layout == "sequential":
-            x = x + self.attn(self.ln1(x))
+            h = self.ln1(x)
+            if self.sel_gate is not None:
+                # v2: выбор доли токенов для дорогого уточнения. Скор по
+                # [токен; бегущее среднее прошлого]; мягкий сигмоид-вес даёт
+                # градиент гейту (жёсткий top-k сам по себе недифференцируем).
+                T = x.shape[1]
+                ctx = SparseMoE._causal_ctx(h, self.sel_ctx_proj) \
+                    if hasattr(self, "sel_ctx_proj") else \
+                    h.cumsum(dim=1) / torch.arange(
+                        1, T + 1, device=h.device, dtype=h.dtype).view(1, -1, 1)
+                score = self.sel_gate(torch.cat([h, ctx], dim=-1)).squeeze(-1)
+                # строго каузальный выбор «растущего бюджета»: токен берётся,
+                # если среди СВОЕГО префикса он входит в топ-долю. Глобальный
+                # top-k здесь нельзя -- выбор зависел бы от будущих скоров.
+                T_ = score.shape[1]
+                gt = (score[:, None, :] > score[:, :, None]) \
+                    .tril(diagonal=-1).sum(-1)                    # строгие предки выше
+                budget = torch.ceil(self.attn_select_frac *
+                                    torch.arange(1, T_ + 1,
+                                                 device=score.device)).clamp_min(1)
+                keep = gt < budget[None]
+                att = self.attn.forward_rows(h, keep)
+                soft = torch.sigmoid(score) * keep.to(score.dtype)
+                x = x + att * soft.unsqueeze(-1)
+            else:
+                x = x + self.attn(h)
             x = x + self.ffn(self.ln2(x))
             for m in (self.attn, self.ffn):
                 if not hasattr(m, "last_route"):        # напр. HierRefineAttention
