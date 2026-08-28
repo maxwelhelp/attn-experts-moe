@@ -132,6 +132,27 @@ claim "routing beats schedules" is NOT confirmed; the weaker, more
 honest one is: **the router is robust to an unknown task mix, the
 schedule is a bet on a known one**.
 
+## Development 6: memory horizon spectrum + learnable decay
+
+The linear expert grew up: per-head γ with three modes — fixed horizon
+(lin9: γ=0.9 ~10 steps; lin99: γ=0.99 ~100), learnable (linL), eternal
+memory (linear). State: S_t = γS_{t-1} + φk⊗v; the scan is strictly causal.
+
+| config (mixed workload, 400 steps) | CE | copy | mode | worst |
+|---|---|---|---|---|
+| v1: routed mixed pool | 2.136 | 2.107 | 2.126 | 2.126 |
+| control: win/lin layer schedule | 2.103 | 1.758 | 2.452 | 2.452 |
+| **spectrum: window + lin9 + lin99 + linL** | 1.935 | 2.098 | **1.775** | 2.098 |
+| **decay: window+window+linL+linL** | **1.924** | 1.915 | 1.825 | **1.915** |
+
+Three takeaways: (1) both new pools beat BOTH the old router and the fixed
+schedule — on total error and on worst subtask; the bottleneck was the WEAK
+linear expert, not the routing idea itself; (2) learned γ converged to
+~0.98 (~50 steps): the model prefers to forget rather than remember
+forever; (3) plain mix with one linL gives the best balance, the horizon
+spectrum gives the best mode. Revision of Development 5's conclusion: with
+equally strong mechanisms, routing beats scheduling again.
+
 ## Honest limitations
 
 * Toy scale (d≤128, ≤4 layers, one-two seeds); wall-clock on a shared GPU

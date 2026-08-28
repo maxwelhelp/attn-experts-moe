@@ -317,7 +317,7 @@ def test_linear_decay_causal_and_learns():
     assert leak.item() < 1e-4, f"затухание течёт: {leak}"
     g = torch.sigmoid(e.gamma_logit)
     assert ((g > 0) & (g < 1)).all()
-    a.square().mean().backward()
+    e(x).square().mean().backward()
     assert e.gamma_logit.grad is not None
 
 
