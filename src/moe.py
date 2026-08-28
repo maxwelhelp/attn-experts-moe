@@ -204,9 +204,13 @@ def make_attn_pool(dim: int, num_experts: int, n_heads: int = 2, **kw) -> List[A
         kinds = [kw.get("pattern", "window")] * num_experts
     assert len(kinds) == num_experts
     for i, kind in enumerate(kinds):
-        if kind == "linear":
-            experts.append(LinearAttentionExpert(dim, n_heads=max(4, n_heads),
-                                                 dropout=kw.get("dropout", 0.0)))
+        if kind in ("linear", "lin9", "lin99", "linL"):
+            decay = {"linear": "none", "lin9": "fixed", "lin99": "fixed",
+                     "linL": "learn"}[kind]
+            gamma = {"lin9": 0.9, "lin99": 0.99}.get(kind, 0.99)
+            experts.append(LinearAttentionExpert(
+                dim, n_heads=max(4, n_heads), dropout=kw.get("dropout", 0.0),
+                decay=decay, gamma_init=gamma))
             continue
         experts.append(AttentionExpert(
             dim, n_heads=n_heads, pattern=kind,

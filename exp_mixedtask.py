@@ -143,7 +143,13 @@ def run(tag, kinds, proj, args, schedule=False):
             print(f"  [{tag}] шаг {step:4d} ce {rec['ce']:.3f} "
                   f"линейные {rec['lin']:.0%}", flush=True)
 
+    gammas = {}
+    for blk in model.blocks:
+        for e in blk.attn.experts:
+            if hasattr(e, "decay_mode") and e.decay_mode == "learn":
+                gammas = e.gamma_values()
     res = {"tag": tag, "ce": round(met["ce"].item(), 3),
+           "learned_gamma": gammas,
            "linear_share": round(linear_share(model), 3),
            "ce_copy": round(subset_ce(0), 3), "ce_mode": round(subset_ce(1), 3),
            "params": model.num_params(), "sec": round(time.time() - t0),
@@ -169,7 +175,8 @@ def main():
     p.add_argument("--select-frac", type=float, default=1.0,
                    help="v2: доля токенов в дорогом уточнении внимания")
     p.add_argument("--only", nargs="*", default=None,
-                   choices=["win4", "mixed", "mixed_proj", "schedule_proj"],
+                   choices=["win4", "mixed", "mixed_proj", "schedule_proj",
+                            "horizons", "decay_mix"],
                    help="запустить только эти конфиги")
     args = p.parse_args()
     if args.device == "auto":
@@ -178,7 +185,9 @@ def main():
     plan = [("win4", ("window",) * 4, False),
             ("mixed", ("window", "window", "linear", "linear"), False),
             ("mixed_proj", ("window", "window", "linear", "linear"), True),
-            ("schedule_proj", ("window", "window", "linear", "linear"), True)]
+            ("schedule_proj", ("window", "window", "linear", "linear"), True),
+            ("horizons", ("window", "lin9", "lin99", "linL"), True),
+            ("decay_mix", ("window", "window", "linL", "linL"), True)]
     if args.only:
         plan = [pl for pl in plan if pl[0] in set(args.only)]
 
@@ -192,7 +201,8 @@ def main():
     print("=== сводка ===")
     for r in out:
         print(f"{r['tag']:12s} ce={r['ce']:.3f} копия={r['ce_copy']:.3f} "
-              f"мода={r['ce_mode']:.3f} линейные={r['linear_share']:.0%}")
+              f"мода={r['ce_mode']:.3f} линейные={r['linear_share']:.0%} "
+              f"γ={r.get('learned_gamma', '-')}")
 
 
 if __name__ == "__main__":

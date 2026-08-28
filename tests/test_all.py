@@ -302,6 +302,25 @@ def test_selective_attention_sparse_causal_grads():
         blk.sel_gate.weight.grad.abs().sum() > 0, "нет градиента у sel_gate"
 
 
+def test_linear_decay_causal_and_learns():
+    """Затухание в линейном эксперте: γ в (0,1), каузальность, градиент."""
+    from src.experts import LinearAttentionExpert
+    torch.manual_seed(0)
+    e = LinearAttentionExpert(32, n_heads=4, decay="learn", gamma_init=0.9)
+    x = torch.randn(2, 40, 32)
+    with torch.no_grad():
+        a = e(x)
+        xp = x.clone()
+        xp[:, 25:] += 5.0
+        b = e(xp)
+    leak = (a[:, :25] - b[:, :25]).abs().max()
+    assert leak.item() < 1e-4, f"затухание течёт: {leak}"
+    g = torch.sigmoid(e.gamma_logit)
+    assert ((g > 0) & (g < 1)).all()
+    a.square().mean().backward()
+    assert e.gamma_logit.grad is not None
+
+
 def test_active_param_estimate_sane():
     m = tiny_model(layout="mixed")
     total, active = m.num_params(False), m.num_params(True)

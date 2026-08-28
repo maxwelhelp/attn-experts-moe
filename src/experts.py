@@ -175,12 +175,39 @@ class LinearAttentionExpert(AttentionExpert):
     Стоимость O(T·d²) НЕ зависит от длины контекста и от того, сколько токенов
     маршрутизировано: состояние считается для всех позиций (дёшево), выход
     берётся только для выбранных строк -- тот же трюк, что с K/V у внимания.
-    Без затухания (decay); управляемое забывание -- TODO (gated DeltaNet).
+
+    Режимы затухания (decay):
+      * "none"  -- gamma=1, вечная память (исходный вариант);
+      * "fixed" -- gamma=gamma_init на голову: конкретный горизонт
+        (0.9 ~ десять шагов, 0.99 ~ сотня) -- «спектр горизонтов»;
+      * "learn" -- gamma обучаемый на голову (через сигмоиду).
     """
 
-    def __init__(self, dim: int, n_heads: int = 4, dropout: float = 0.0):
+    def __init__(self, dim: int, n_heads: int = 4, dropout: float = 0.0,
+                 decay: str = "none", gamma_init: float = 0.99):
         super().__init__(dim, n_heads=n_heads, pattern="dense")   # маска не нужна
         self.pattern = "linear"
+        self.decay_mode = decay
+        assert decay in ("none", "fixed", "learn")
+        if decay == "fixed":
+            self.register_buffer("gamma_logit",
+                                 torch.full((n_heads,), self._logit(gamma_init)))
+        elif decay == "learn":
+            self.gamma_logit = nn.Parameter(
+                torch.full((n_heads,), self._logit(gamma_init)))
+
+    @staticmethod
+    def _logit(p):
+        import math
+        return math.log(p / (1.0 - p))
+
+    def _gamma(self):
+        return torch.sigmoid(self.gamma_logit).view(1, self.n_heads, 1, 1)
+
+    def gamma_values(self):
+        if self.decay_mode == "none":
+            return [1.0] * self.n_heads
+        return [round(float(v), 4) for v in torch.sigmoid(self.gamma_logit)]
 
     def forward_batch(self, x: torch.Tensor) -> torch.Tensor:     # [B,T,D]
         B, T, D = x.shape
@@ -190,15 +217,32 @@ class LinearAttentionExpert(AttentionExpert):
         phi_q = F.elu(q) + 1.0
         phi_k = F.elu(k) + 1.0
 
-        # состояние S_t = cumsum_{s<=t}(φk_s ⊗ v_s) -> [B,H,T,dh,dv]
-        outer = phi_k.unsqueeze(-1) * v.unsqueeze(-2)             # [B,H,T,dh,dv]
-        state = outer.cumsum(dim=2)
-        num = torch.einsum("bhtd,bhtde->bhte", phi_q, state)      # [B,H,T,dv]
-        # нормировка на сумму весов ключей -- иначе выход не ограничен и
-        # разрастается на тысячи, заглушая остальных экспертов в смеси
-        den = torch.einsum("bhtd,bhtd->bht", phi_q,
-                           phi_k.cumsum(dim=2)).clamp_min(1e-3)
-        out = num / den.unsqueeze(-1)                             # [B,H,T,dv]
+        if self.decay_mode == "none":
+            # состояние S_t = cumsum_{s<=t}(φk_s ⊗ v_s) -> [B,H,T,dh,dv]
+            outer = phi_k.unsqueeze(-1) * v.unsqueeze(-2)         # [B,H,T,dh,dv]
+            state = outer.cumsum(dim=2)
+            num = torch.einsum("bhtd,bhtde->bhte", phi_q, state)
+            # нормировка на сумму весов ключей -- иначе выход не ограничен и
+            # разрастается на тысячи, заглушая остальных экспертов в смеси
+            den = torch.einsum("bhtd,bhtd->bht", phi_q,
+                               phi_k.cumsum(dim=2)).clamp_min(1e-3)
+            out = num / den.unsqueeze(-1)                         # [B,H,T,dv]
+        else:
+            # каузальная рекуррентность с затуханием: S_t = γ·S_{t-1} + φk⊗v
+            g = self._gamma()                                     # [1,H,1,1]
+            gh = g.view(1, self.n_heads, 1)                       # [1,H,1] для z
+            state = x.new_zeros(B, self.n_heads, self.dh, self.dh)
+            zsum = x.new_zeros(B, self.n_heads, self.dh)
+            outs = []
+            for t in range(T):
+                state = g * state + torch.einsum(
+                    "bhd,bhe->bhde", phi_k[:, :, t], v[:, :, t])
+                zsum = gh * zsum + phi_k[:, :, t]
+                num = torch.einsum("bhd,bhde->bhe", phi_q[:, :, t], state)
+                den = torch.einsum("bhd,bhd->bh",
+                                   phi_q[:, :, t], zsum).clamp_min(1e-3)
+                outs.append(num / den.unsqueeze(-1))
+            out = torch.stack(outs, dim=2)                        # [B,H,T,dv]
         return self.drop(self.wo(out.transpose(1, 2).reshape(B, T, D)))
 
 
