@@ -114,6 +114,24 @@ attention** — constrained refinement acts as regularization and forces
 the router to be pickier. A too-tight budget (35%) starts cutting into
 the flesh.
 
+## Development 5: the decisive control — fixed schedule vs router
+
+Equal per-layer budget: even layers windows-only, odd layers linears-only,
+same projection gate. One seed, 400 steps:
+
+| config | CE total | copy | mode | worst subtask |
+|---|---|---|---|---|
+| v1: routed mixed pool | 2.136 | 2.107 | 2.126 | **2.126** |
+| control: win/lin layer schedule | **2.103** | **1.758** | 2.452 | 2.452 |
+
+Honest reading: on TOTAL error the schedule matches the router (slightly
+better, with slightly fewer params). But the quality structure differs:
+the schedule wins copy and fails mode (worst case 2.452), while the
+router is uniform across both subtasks (worst case 2.126). The strong
+claim "routing beats schedules" is NOT confirmed; the weaker, more
+honest one is: **the router is robust to an unknown task mix, the
+schedule is a bet on a known one**.
+
 ## Honest limitations
 
 * Toy scale (d≤128, ≤4 layers, one-two seeds); wall-clock on a shared GPU

@@ -79,16 +79,33 @@ def linear_share(model):
     return lin / max(tot, 1)
 
 
-def run(tag, kinds, proj, args):
+def run(tag, kinds, proj, args, schedule=False):
     torch.manual_seed(args.seed)
     blk = BlockConfig(
         dim=args.d_model, num_ffn_experts=8, ffn_top_k=2,
         num_attn_experts=len(kinds), attn_top_k=2,
         attn_expert_kinds=kinds, window=args.seq_len // 2 + 8,
         proj_router=proj, attn_select_frac=getattr(args, "select_frac", 1.0))
-    cfg = ModelConfig(vocab_size=args.vocab_hi + 2, max_seq_len=args.seq_len * 2,
-                      num_layers=args.layers, block=blk, layouts=("sequential",))
-    model = TinyCausalLM(cfg).to(args.device)
+    blk_cfg = ModelConfig(vocab_size=args.vocab_hi + 2,
+                          max_seq_len=args.seq_len * 2, num_layers=args.layers,
+                          block=blk, layouts=("sequential",))
+    if schedule:
+        # КОНТРОЛЬ: жёсткое расписание вместо роутера -- чётные слои только
+        # окна, нечётные только линейные, top-2 из 2 (оба всегда активны),
+        # та же проекция в роутере и тот же бюджет на слой
+        w = BlockConfig(**{**vars(blk).copy(), "num_attn_experts": 2,
+                           "attn_expert_kinds": ("window", "window")})
+        l = BlockConfig(**{**vars(blk).copy(), "num_attn_experts": 2,
+                           "attn_expert_kinds": ("linear", "linear")})
+        blk_cfg = ModelConfig(vocab_size=args.vocab_hi + 2,
+                              max_seq_len=args.seq_len * 2, num_layers=args.layers,
+                              block=w, block_schedule=(w, l, w, l),
+                              layouts=("sequential",))
+    else:
+        blk_cfg = ModelConfig(vocab_size=args.vocab_hi + 2,
+                              max_seq_len=args.seq_len * 2, num_layers=args.layers,
+                              block=blk, layouts=("sequential",))
+    model = TinyCausalLM(blk_cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
     def subset_ce(kind_id, n_batches=4):
@@ -152,7 +169,7 @@ def main():
     p.add_argument("--select-frac", type=float, default=1.0,
                    help="v2: доля токенов в дорогом уточнении внимания")
     p.add_argument("--only", nargs="*", default=None,
-                   choices=["win4", "mixed", "mixed_proj"],
+                   choices=["win4", "mixed", "mixed_proj", "schedule_proj"],
                    help="запустить только эти конфиги")
     args = p.parse_args()
     if args.device == "auto":
@@ -160,13 +177,14 @@ def main():
 
     plan = [("win4", ("window",) * 4, False),
             ("mixed", ("window", "window", "linear", "linear"), False),
-            ("mixed_proj", ("window", "window", "linear", "linear"), True)]
+            ("mixed_proj", ("window", "window", "linear", "linear"), True),
+            ("schedule_proj", ("window", "window", "linear", "linear"), True)]
     if args.only:
         plan = [pl for pl in plan if pl[0] in set(args.only)]
 
     out = []
     for tag, kinds, proj in plan:
-        out.append(run(tag, kinds, proj, args))
+        out.append(run(tag, kinds, proj, args, schedule=(tag == "schedule_proj")))
 
     Path("results").mkdir(exist_ok=True)
     Path("results/mixedtask.json").write_text(json.dumps(out, indent=2,

@@ -1,0 +1,13 @@
+  [schedule_proj] шаг    1 ce 2.870 линейные 50%
+  [schedule_proj] шаг   50 ce 2.638 линейные 50%
+  [schedule_proj] шаг  100 ce 2.607 линейные 50%
+  [schedule_proj] шаг  150 ce 2.619 линейные 50%
+  [schedule_proj] шаг  200 ce 2.559 линейные 50%
+  [schedule_proj] шаг  250 ce 2.258 линейные 50%
+  [schedule_proj] шаг  300 ce 2.162 линейные 50%
+  [schedule_proj] шаг  350 ce 2.121 линейные 50%
+  [schedule_proj] шаг  400 ce 2.103 линейные 50%
+  [schedule_proj] ГОТОВО ce=2.103 копия=1.758 мода=2.452 линейные=50%
+
+=== сводка ===
+schedule_proj ce=2.103 копия=1.758 мода=2.452 линейные=50%

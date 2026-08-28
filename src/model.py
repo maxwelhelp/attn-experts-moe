@@ -18,6 +18,9 @@ class ModelConfig:
     block: BlockConfig = field(default_factory=BlockConfig)
     tie_embeddings: bool = True
     layouts: Tuple[str, ...] = ("sequential",)   # per-block layout: 'sequential' | 'mixed'
+    # контрольный режим: СВОЙ BlockConfig на слой (циклится), напр. жёсткое
+    # расписание «чётные слои -- окна, нечётные -- линейные»
+    block_schedule: Optional[Tuple[BlockConfig, ...]] = None
 
 
 class TinyCausalLM(nn.Module):
@@ -28,11 +31,17 @@ class TinyCausalLM(nn.Module):
         self.tok_emb = nn.Embedding(cfg.vocab_size, d)
         self.pos_emb = nn.Embedding(cfg.max_seq_len, d)
         layouts = [cfg.layouts[i % len(cfg.layouts)] for i in range(cfg.num_layers)]
-        self.blocks = nn.ModuleList(
-            DenseBlock(cfg.block) if lay == "dense"
-            else DualMoEBlock(cfg.block, layout=lay)
-            for lay in layouts
-        )
+        if cfg.block_schedule is not None:
+            bcfgs = [cfg.block_schedule[i % len(cfg.block_schedule)]
+                     for i in range(cfg.num_layers)]
+            self.blocks = nn.ModuleList(
+                DualMoEBlock(bc, layout=ly) for bc, ly in zip(bcfgs, layouts))
+        else:
+            self.blocks = nn.ModuleList(
+                DenseBlock(cfg.block) if lay == "dense"
+                else DualMoEBlock(cfg.block, layout=lay)
+                for lay in layouts
+            )
         self.ln_f = RMSNorm(d)
         self.head = nn.Linear(d, cfg.vocab_size, bias=False)
         if cfg.tie_embeddings:

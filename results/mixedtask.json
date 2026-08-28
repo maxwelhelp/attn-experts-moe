@@ -1,58 +1,58 @@
 [
   {
-    "tag": "mixed_proj",
-    "ce": 2.39,
-    "linear_share": 0.578,
-    "ce_copy": 2.651,
-    "ce_mode": 2.167,
-    "params": 7384452,
-    "sec": 841,
-    "select_frac": 0.35,
+    "tag": "schedule_proj",
+    "ce": 2.103,
+    "linear_share": 0.5,
+    "ce_copy": 1.758,
+    "ce_mode": 2.452,
+    "params": 6857088,
+    "sec": 101,
+    "select_frac": 1.0,
     "history": [
       {
         "step": 1,
-        "ce": 2.914,
-        "lin": 0.51
+        "ce": 2.87,
+        "lin": 0.5
       },
       {
         "step": 50,
-        "ce": 2.66,
-        "lin": 0.47
+        "ce": 2.638,
+        "lin": 0.5
       },
       {
         "step": 100,
-        "ce": 2.635,
-        "lin": 0.53
+        "ce": 2.607,
+        "lin": 0.5
       },
       {
         "step": 150,
-        "ce": 2.473,
+        "ce": 2.619,
         "lin": 0.5
       },
       {
         "step": 200,
-        "ce": 2.544,
+        "ce": 2.559,
         "lin": 0.5
       },
       {
         "step": 250,
-        "ce": 2.477,
-        "lin": 0.54
+        "ce": 2.258,
+        "lin": 0.5
       },
       {
         "step": 300,
-        "ce": 2.428,
-        "lin": 0.53
+        "ce": 2.162,
+        "lin": 0.5
       },
       {
         "step": 350,
-        "ce": 2.406,
+        "ce": 2.121,
         "lin": 0.5
       },
       {
         "step": 400,
-        "ce": 2.39,
-        "lin": 0.58
+        "ce": 2.103,
+        "lin": 0.5
       }
     ]
   }
