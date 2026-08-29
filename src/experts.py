@@ -228,21 +228,40 @@ class LinearAttentionExpert(AttentionExpert):
                                phi_k.cumsum(dim=2)).clamp_min(1e-3)
             out = num / den.unsqueeze(-1)                         # [B,H,T,dv]
         else:
-            # каузальная рекуррентность с затуханием: S_t = γ·S_{t-1} + φk⊗v
-            g = self._gamma()                                     # [1,H,1,1]
-            gh = g.view(1, self.n_heads, 1)                       # [1,H,1] для z
-            state = x.new_zeros(B, self.n_heads, self.dh, self.dh)
-            zsum = x.new_zeros(B, self.n_heads, self.dh)
-            outs = []
-            for t in range(T):
-                state = g * state + torch.einsum(
-                    "bhd,bhe->bhde", phi_k[:, :, t], v[:, :, t])
-                zsum = gh * zsum + phi_k[:, :, t]
-                num = torch.einsum("bhd,bhde->bhe", phi_q[:, :, t], state)
-                den = torch.einsum("bhd,bhd->bh",
-                                   phi_q[:, :, t], zsum).clamp_min(1e-3)
-                outs.append(num / den.unsqueeze(-1))
-            out = torch.stack(outs, dim=2)                        # [B,H,T,dv]
+            # S_t = Σ_{s<=t} γ^{t-s}·φk_s⊗v_s. Быстрый путь (все γ>=0.85):
+            # замена переменных γ^{-s} превращает рекуррентность в cumsum --
+            # S_t = γ^t · cumsum(a_s / γ^s), три векторные операции вместо
+            # питон-цикла. При малых γ экспонента переполняет fp32 -- тогда
+            # честный цикл.
+            g_flat = torch.sigmoid(self.gamma_logit)              # [H]
+            outer = phi_k.unsqueeze(-1) * v.unsqueeze(-2)         # [B,H,T,dh,dv]
+            if float(g_flat.min()) >= 0.85:
+                pow_t = g_flat[:, None] ** torch.arange(
+                    T, device=x.device, dtype=x.dtype)[None]      # [H,T]
+                pow5 = pow_t.view(1, self.n_heads, T, 1, 1)
+                pow3 = pow_t.view(1, self.n_heads, T, 1)
+                state = (outer / pow5).cumsum(dim=2) * pow5
+                zsum = (phi_k / pow3).cumsum(dim=2) * pow3
+                num = torch.einsum("bhtd,bhtde->bhte", phi_q, state)
+                den = torch.einsum("bhtd,bhtd->bht",
+                                   phi_q, zsum).clamp_min(1e-3)
+                out = num / den.unsqueeze(-1)
+            else:
+                # каузальная рекуррентность с затуханием: S_t = γ·S_{t-1} + φk⊗v
+                g = self._gamma()                                 # [1,H,1,1]
+                gh = g.view(1, self.n_heads, 1)                   # [1,H,1] для z
+                state = x.new_zeros(B, self.n_heads, self.dh, self.dh)
+                zsum = x.new_zeros(B, self.n_heads, self.dh)
+                outs = []
+                for t in range(T):
+                    state = g * state + torch.einsum(
+                        "bhd,bhe->bhde", phi_k[:, :, t], v[:, :, t])
+                    zsum = gh * zsum + phi_k[:, :, t]
+                    num = torch.einsum("bhd,bhde->bhe", phi_q[:, :, t], state)
+                    den = torch.einsum("bhd,bhd->bh",
+                                       phi_q[:, :, t], zsum).clamp_min(1e-3)
+                    outs.append(num / den.unsqueeze(-1))
+                out = torch.stack(outs, dim=2)                    # [B,H,T,dv]
         return self.drop(self.wo(out.transpose(1, 2).reshape(B, T, D)))
 
 

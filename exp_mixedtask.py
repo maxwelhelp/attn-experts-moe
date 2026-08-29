@@ -176,7 +176,7 @@ def main():
                    help="v2: доля токенов в дорогом уточнении внимания")
     p.add_argument("--only", nargs="*", default=None,
                    choices=["win4", "mixed", "mixed_proj", "schedule_proj",
-                            "horizons", "decay_mix"],
+                            "horizons", "decay_mix", "hybrid100", "hybrid60"],
                    help="запустить только эти конфиги")
     args = p.parse_args()
     if args.device == "auto":
@@ -187,7 +187,9 @@ def main():
             ("mixed_proj", ("window", "window", "linear", "linear"), True),
             ("schedule_proj", ("window", "window", "linear", "linear"), True),
             ("horizons", ("window", "lin9", "lin99", "linL"), True),
-            ("decay_mix", ("window", "window", "linL", "linL"), True)]
+            ("decay_mix", ("window", "window", "linL", "linL"), True),
+            ("hybrid100", ("window", "lin9", "lin99", "linL"), True),
+            ("hybrid60", ("window", "lin9", "lin99", "linL"), True)]
     if args.only:
         plan = [pl for pl in plan if pl[0] in set(args.only)]
 

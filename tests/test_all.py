@@ -321,6 +321,34 @@ def test_linear_decay_causal_and_learns():
     assert e.gamma_logit.grad is not None
 
 
+def test_fast_scan_matches_recurrence():
+    """Быстрый путь затухания (cumsum-трюк) == честной рекуррентности."""
+    import torch.nn.functional as F
+    from src.experts import LinearAttentionExpert
+    torch.manual_seed(0)
+    e = LinearAttentionExpert(32, n_heads=4, decay="fixed", gamma_init=0.9)
+    x = torch.randn(2, 48, 32)
+    with torch.no_grad():
+        fast = e(x)
+        B, T, D = x.shape
+        q = e._split(e.wq(x), B, T)
+        k = e._split(e.wk(x), B, T)
+        v = e._split(e.wv(x), B, T)
+        pq, pk = F.elu(q) + 1, F.elu(k) + 1
+        st = x.new_zeros(B, 4, 8, 8)
+        zs = x.new_zeros(B, 4, 8)
+        outs = []
+        g = torch.full((1, 4, 1, 1), 0.9)
+        for t in range(T):
+            st = g * st + torch.einsum("bhd,bhe->bhde", pk[:, :, t], v[:, :, t])
+            zs = g.view(1, 4, 1) * zs + pk[:, :, t]
+            outs.append((torch.einsum("bhd,bhde->bhe", pq[:, :, t], st) /
+                         torch.einsum("bhd,bhd->bh", pq[:, :, t], zs)
+                         .clamp_min(1e-3).unsqueeze(-1)))
+        ref = e.wo(torch.stack(outs, 2).transpose(1, 2).reshape(B, T, D))
+    assert (fast - ref).abs().max().item() < 1e-4
+
+
 def test_active_param_estimate_sane():
     m = tiny_model(layout="mixed")
     total, active = m.num_params(False), m.num_params(True)
