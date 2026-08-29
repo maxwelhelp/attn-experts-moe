@@ -2,211 +2,119 @@
 
 *(русская версия: [README.md](README.md))*
 
-A research scaffold built around one idea (due to the project author):
-**for every token, assemble its own mixture of attentions from a pool of
-different sparse mechanisms** — the router decides which mixing type this
-token needs: a precise window, top-k jumps, linear memory, or budget
-projections. Three developments are built on top of this core: a
-"cheap → select → refine" hierarchy, a router that reads a cheap context
-projection, and selective expensive refinement.
+The project's core idea (by the project author): **for every token,
+assemble its own mixture of attentions from a pool of different sparse
+mechanisms** — the router decides what this token needs: a precise
+window, fast memory, long memory, or jumps. The project is the path from
+a prototype to a working architecture, with every decision validated by
+a control experiment.
 
-## TL;DR headline results
+## Final architecture (hybrid100) — the headline
 
-| experiment | result |
-|---|---|
-| Copy task, pool of 2 windows + 2 linears, projection-aware router | **1.90** vs 2.00 for the homogeneous pool |
-| Mixed workload (copy + mode tracking), projection-aware router | **2.136** — best on BOTH subtasks at once |
-| Hierarchical attention on copy T=128 | **2.52** with only **33%** of keys opened (dense: 2.59 / 100%) |
-| v2: 60% refinement budget | **2.05** — better quality with 40% of attention saved |
-| Training start vs JetMoE-style | noticeably faster at equal budget |
-| Active params per token | ~3.4× fewer than the full pool |
+The project's best result: **CE 1.874 vs 2.344 for dense windows — a 20%
+error reduction** on a mixed workload (copy-through-separator + mode
+tracking), with the best worst case across subtasks. One constructor —
+`src/best.py::make_hybrid100`; demo — `best_demo.py`.
 
-Honest verdict: as a drop-in replacement for plain attention today — no
-(dense attention is more accurate at equal budget and faster at toy scale).
-The value is in the confirmed specialization mechanics and in compute
-savings that convert into wins at scale with block-sparse kernels.
+```
+x ──► LayerNorm ──► ATTENTION MECHANISM POOL (top-2 of 4, routed) ──► +x
+                      window 72 — precise local lookup
+                      lin9      — linear attention, γ=0.9  (~10 steps)
+                      lin99     — linear attention, γ=0.99 (~100 steps)
+                      linL      — learnable γ (converges to ~0.985–0.99)
+          the router sees [token ; causal running mean of projected
+          past] — a cheap snapshot of the whole context
+ then: FFN-MoE (top-2 of 8) ──► +residual     (regular block part)
+```
 
-## How the core "author's attention" works
+Every decision was paid for by an experiment:
 
-Not a single module but a way of assembling a layer. Data flow:
+| decision | why | without it |
+|---|---|---|
+| top-2 of a heterogeneous pool | different tasks need different mechanisms | windows: 2.344 |
+| past projection in the router | the router sees the task type, not just the token | 2.136 and a 50/50 equilibrium |
+| memory horizons + learnable decay | equally strong mechanisms: "per-step / per-paragraph" memory | 1.92–1.94 |
+| normalized expert outputs | unnormalized, the linear expert outputs \|7310\| vs 0.4 | the mixture dies |
+| NO selection budget (100% tokens) | on this pool the budget hurts | 2.064 |
 
-1. **Expert pool** (`src/experts.py`, factories `make_attn_pool` /
-   `make_ffn_pool`): several independent attention blocks of different
-   kinds — `AttentionExpert` with `window` / `topk` / `dense` patterns
-   (own Wq/Wk/Wv/Wo), `LinearAttentionExpert` (linear attention, DeltaNet
-   relative: state S_t = Σ φk⊗v, output φq·S_t, denominator-normalized),
-   and `ProjectionMoEAttention` (JetMoE-style shared kernel).
-2. **Router** (`src/router.py`, `TopKRouter`): scores all experts per
-   token and picks top-k; two modes — plain uniform top-k and **typed
-   quotas** (`typed_ks`: exactly k_ffn + k_attn), plus Switch-style
-   balancing aux loss and z-loss.
-3. **Dispatcher** (`src/moe.py`, `SparseMoE`): assignments are sorted by
-   expert id forming contiguous segments — one GEMM per expert, one
-   scatter back, one host sync per layer.
-4. **Assembly**: selected expert outputs are weighted by gate values and
-   added to the residual. Blocks are `DualMoEBlock` (`src/block.py`):
-   `sequential` (attention pool + FFN pool) or `mixed` (one pool with
-   typed quotas).
+Learned γ≈0.985–0.99 in every run — the model itself prefers to forget
+rather than remember forever. Active params per token ~2.1M of 7.4M
+(**3.5× fewer** than the full pool). In the demo the router splits load
+window 29% / lin9 49% / lin99 37% / linL 38% — visible specialization.
 
-## Development 1: mixture of mechanisms and its main pitfall
+## Results stage by stage (same mixed workload, 400 steps)
 
-The first `LinearAttentionExpert` had unnormalized state: outputs blew up
-to ~7310 vs ~0.4 for window experts and drowned the whole mixture
-(diagnostics in `exp_routing.py`). Fixed with denominator normalization
-(Katharopoulos/RetNet style). After the fix the heterogeneous pool beats
-the homogeneous one (1.90 vs 2.00).
-
-Router diagnostics also revealed a **local routing equilibrium**: without
-external hints it keeps ~50% of load on each type even when one type is
-objectively better (and it is not the aux loss — verified by disabling).
-A behavioral test pins the boundary: with a large immediate capability gap
-the router does learn preference.
-
-## Development 2 (v1): the router sees a cheap context projection
-
-Implementation of the discussion idea: give the gate a coarse snapshot of
-the whole past. A causal running mean of projected tokens is concatenated
-to token features at the gate input (`proj_router`).
-
-Mixed-workload benchmark `exp_mixedtask.py` — a 50/50 stream of copying
-(window work) and prefix-mode tracking (linear-memory work):
-
-| config | CE total | copy | mode | linear share |
+| version | CE | copy | mode | worst |
 |---|---|---|---|---|
-| 4 windows | 2.344 | 2.168 | 2.556 | — |
-| windows+linears | 2.391 | 2.485 | 2.380 | 56% |
-| **windows+linears + projection router** | **2.136** | **2.107** | **2.126** | 47% |
-
-The projection removes the specialization trade-off: best on both
-subtasks at once. First positive answer to the "router equilibrium" risk.
-
-## Development 3: hierarchical "cheap → select → refine"
-
-Prototype `src/hier.py`: block landmarks (cheap projection) → per-token
-strictly causal gate picks top-k past blocks → exact attention to them
-only + a fixed-V refinement loop (K/V once, Q recomputed). Tests catch
-three future-leak channels through gates.
-
-Copy T=128 (distance 65), 600 steps: hierarchical **2.52 at 33% keys**
-vs dense 2.59/100%. Caveat: wall-clock is not saved yet — the mask goes
-through dense SDPA; a block-sparse kernel is required.
-
-## Development 4 (v2): expensive refinement only where selected
-
-A block gate (`attn_select_frac`) keeps a fraction of tokens by a
-"growing budget" rule (a token is kept if it is in the top fraction of
-ITS OWN prefix — a global top-k would depend on future scores). The pool
-computes only the selected rows: window/top-k experts take the exact
-`forward_selected` path (real FLOPs saving ∝ fraction), linears scan
-everything anyway (they are cheap). A soft sigmoid weight carries
-gradient into the selection gate.
-
-| config | refinement | CE | copy | mode |
-|---|---|---|---|---|
-| windows | 100% | 2.344 | 2.168 | 2.556 |
-| mixed | 100% | 2.391 | 2.485 | 2.380 |
-| **v1: + projection router** | 100% | 2.136 | 2.107 | 2.126 |
-| **v2: + 60% budget** | **60%** | **2.050** | 2.262 | **1.876** |
-| v2: 35% budget | 35% | 2.390 | 2.651 | 2.167 |
-
-Key finding: **a 60% budget improves overall quality while saving 40% of
-attention** — constrained refinement acts as regularization and forces
-the router to be pickier. A too-tight budget (35%) starts cutting into
-the flesh.
-
-## Development 5: the decisive control — fixed schedule vs router
-
-Equal per-layer budget: even layers windows-only, odd layers linears-only,
-same projection gate. One seed, 400 steps:
-
-| config | CE total | copy | mode | worst subtask |
-|---|---|---|---|---|
-| v1: routed mixed pool | 2.136 | 2.107 | 2.126 | **2.126** |
-| control: win/lin layer schedule | **2.103** | **1.758** | 2.452 | 2.452 |
-
-Honest reading: on TOTAL error the schedule matches the router (slightly
-better, with slightly fewer params). But the quality structure differs:
-the schedule wins copy and fails mode (worst case 2.452), while the
-router is uniform across both subtasks (worst case 2.126). The strong
-claim "routing beats schedules" is NOT confirmed; the weaker, more
-honest one is: **the router is robust to an unknown task mix, the
-schedule is a bet on a known one**.
-
-## Development 6: memory horizon spectrum + learnable decay
-
-The linear expert grew up: per-head γ with three modes — fixed horizon
-(lin9: γ=0.9 ~10 steps; lin99: γ=0.99 ~100), learnable (linL), eternal
-memory (linear). State: S_t = γS_{t-1} + φk⊗v; the scan is strictly causal.
-
-| config (mixed workload, 400 steps) | CE | copy | mode | worst |
-|---|---|---|---|---|
-| v1: routed mixed pool | 2.136 | 2.107 | 2.126 | 2.126 |
-| control: win/lin layer schedule | 2.103 | 1.758 | 2.452 | 2.452 |
-| **spectrum: window + lin9 + lin99 + linL** | 1.935 | 2.098 | **1.775** | 2.098 |
-| **decay: window+window+linL+linL** | **1.924** | 1.915 | 1.825 | **1.915** |
-
-Three takeaways: (1) both new pools beat BOTH the old router and the fixed
-schedule — on total error and on worst subtask; the bottleneck was the WEAK
-linear expert, not the routing idea itself; (2) learned γ converged to
-~0.98 (~50 steps): the model prefers to forget rather than remember
-forever; (3) plain mix with one linL gives the best balance, the horizon
-spectrum gives the best mode. Revision of Development 5's conclusion: with
-equally strong mechanisms, routing beats scheduling again.
-
-## Development 7: the full assembly — everything together
-
-Pool "window + lin9 + lin99 + linL" (top-2) + projection router, full
-attention (hybrid100) and the same with a 60% selection budget (hybrid60):
-
-| assembly (mixed workload, 400 steps) | CE | copy | mode | worst |
-|---|---|---|---|---|
-| start: homogeneous windows | 2.344 | 2.168 | 2.556 | 2.556 |
-| v1: old-pool router | 2.136 | 2.107 | 2.126 | 2.126 |
-| decay (best of Dev. 6) | 1.924 | 1.915 | 1.825 | 1.915 |
+| dense windows (start) | 2.344 | 2.168 | 2.556 | 2.556 |
+| v1: old-pool router + projection | 2.136 | 2.107 | 2.126 | 2.126 |
+| control: fixed win/lin schedule | 2.103 | 1.758 | 2.452 | 2.452 |
+| v2: v1 + 60% budget | 2.050 | 2.262 | 1.876 | 2.262 |
+| + decay (linL) | 1.924 | 1.915 | 1.825 | 1.915 |
 | **full assembly hybrid100** | **1.874** | 2.034 | **1.772** | **2.034** |
-| assembly + 60% budget | 2.064 | 2.478 | 1.755 | 2.478 |
 
-Two takeaways. (1) The full assembly is the new record: **-20% error from
-the start** (2.344 -> 1.874) with the best worst case; the components add
-up instead of interfering. Learned γ again ~0.985. (2) Unexpectedly and
-honestly: the **60% budget does NOT transfer to the new pool** — copy
-collapses (2.478) and total error is worse than the full assembly. The
-"budget regularization" effect of Development 4 was a property of the
-weak pool, not a universal law. The project's best architecture is
-hybrid100: without the selection budget.
+## How it works (briefly)
 
-## Honest limitations
+* **Experts** (`src/experts.py`): `AttentionExpert` (window/top-k/dense
+  patterns, own Wq/Wk/Wv/Wo, exact row path `forward_selected`),
+  `LinearAttentionExpert` — linear attention (DeltaNet relative) with
+  decay: a fast cumsum path equivalent to the recurrence to 1e-7, plus an
+  honest loop; `ProjectionMoEAttention` (JetMoE style).
+* **Router** (`src/router.py::TopKRouter`): top-k with typed quotas,
+  Switch aux and z-loss; `proj_router` mode appends a causal running mean
+  of projected past to token features (`SparseMoE._causal_ctx`).
+* **Dispatcher** (`src/moe.py::SparseMoE`): sort assignments → one GEMM
+  per expert, one host sync per layer; `forward_rows` runs expensive
+  experts only on selected rows.
+* **Block** (`src/block.py::DualMoEBlock`): attention pool + FFN pool,
+  `sequential` / `mixed` layouts.
 
-* Toy scale (d≤128, ≤4 layers, one-two seeds); wall-clock on a shared GPU
-  is not indicative.
-* Compute savings are structural/analytic so far: without block-sparse
-  kernels wall-clock does not win.
-* Router equilibrium is softened by the projection, not solved in general.
-* The linear expert is a simplified DeltaNet without decay/gating.
+## What was tested and did NOT hold (honest)
 
-## Related work and where the novelty is
+1. **Router vs fixed schedule.** With a known task profile the schedule
+   is not worse (better on copy). The router wins via robustness to an
+   unknown profile (worst subtask 2.03 vs 2.45) and wins in the full
+   assembly with equally strong mechanisms.
+2. **Selection budget (v2)**: on the weak pool it gave quality AND
+   savings, but it does **not transfer** to the strong pool — budget
+   regularization turned out to be a property of the weak pool, not a
+   universal law.
+3. **Routing equilibrium**: without context the router sticks at 50/50
+   regardless of the aux loss; the past projection removes the problem.
+4. **Hierarchical prototype** (`src/hier.py`): 2.52 at 33% keys vs 2.59
+   for dense — the mechanics work, but wall-clock savings need
+   block-sparse kernels.
 
-Occupied niches: MoA/SwitchHead/JetMoE (MoE inside attention);
-NSA/MoBA/Routing Transformer/Landmark/Informer (hierarchical block
-selection); Jamba/Zamba/Samba/Griffin/Hymba (attention+SSM hybrids with
-fixed schedules); Mixture-of-Depths (depth routing).
+## Limitations
 
-The free intersection this code is heading towards: **heterogeneous
-hierarchical attention — per-token routing BETWEEN mechanisms
-(window/top-k/DeltaNet/projections), driven by a cheap context
-projection**. The pieces are known individually; their combination was
-not found in the literature.
+Toy scale (d=128, 4 layers, single seeds); savings are structural (FLOPs),
+not wall-clock — a block-sparse kernel is required; the linear expert is a
+simplified DeltaNet without decay gates on values; runs on a shared GPU,
+so wall-clock is not meaningful.
+
+## Related work
+
+MoA / SwitchHead / JetMoE (MoE inside attention); NSA / MoBA / Routing
+Transformer / Landmark (hierarchical block selection); Jamba / Zamba /
+Samba / Griffin / Hymba (attention+SSM hybrids with fixed schedules);
+Mixture-of-Depths (depth routing). The free niche this project moves
+towards: **heterogeneous hierarchical attention with per-token routing
+BETWEEN mechanisms driven by a cheap context projection**.
 
 ## Reproduction
 
 ```bash
-python3 tests/test_all.py            # 17 mechanics & behavior tests
+python3 best_demo.py                 # the best architecture: short demo
+python3 tests/test_all.py            # 19 mechanics & behavior tests
 python3 tests/test_hier.py           # 5 hierarchical attention tests
+python3 exp_mixedtask.py --only hybrid100                # record assembly
+python3 exp_mixedtask.py --only hybrid60 --select-frac 0.6
+python3 exp_mixedtask.py             # all mixed-workload configs
 python3 train_demo.py --steps 400    # copy: homogeneous vs mixed pool
-python3 train_lm.py                  # Shakespeare char-LM comparison
+python3 train_lm.py                  # Shakespeare char-LM
 python3 exp_routing.py               # router equilibrium diagnostics
-python3 exp_mixedtask.py             # v1: mixed workload (+ --select-frac)
 python3 exp_hier.py                  # hierarchical vs dense
 ```
 
-Branch `hier-refine-attention`; the base scaffold commit is on `master`.
+The best assembly is `src/best.py::make_hybrid100(dim=128, num_layers=4)`.
+Main development branch — `hier-refine-attention`; base — `master`.
