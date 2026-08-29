@@ -153,6 +153,28 @@ forever; (3) plain mix with one linL gives the best balance, the horizon
 spectrum gives the best mode. Revision of Development 5's conclusion: with
 equally strong mechanisms, routing beats scheduling again.
 
+## Development 7: the full assembly — everything together
+
+Pool "window + lin9 + lin99 + linL" (top-2) + projection router, full
+attention (hybrid100) and the same with a 60% selection budget (hybrid60):
+
+| assembly (mixed workload, 400 steps) | CE | copy | mode | worst |
+|---|---|---|---|---|
+| start: homogeneous windows | 2.344 | 2.168 | 2.556 | 2.556 |
+| v1: old-pool router | 2.136 | 2.107 | 2.126 | 2.126 |
+| decay (best of Dev. 6) | 1.924 | 1.915 | 1.825 | 1.915 |
+| **full assembly hybrid100** | **1.874** | 2.034 | **1.772** | **2.034** |
+| assembly + 60% budget | 2.064 | 2.478 | 1.755 | 2.478 |
+
+Two takeaways. (1) The full assembly is the new record: **-20% error from
+the start** (2.344 -> 1.874) with the best worst case; the components add
+up instead of interfering. Learned γ again ~0.985. (2) Unexpectedly and
+honestly: the **60% budget does NOT transfer to the new pool** — copy
+collapses (2.478) and total error is worse than the full assembly. The
+"budget regularization" effect of Development 4 was a property of the
+weak pool, not a universal law. The project's best architecture is
+hybrid100: without the selection budget.
+
 ## Honest limitations
 
 * Toy scale (d≤128, ≤4 layers, one-two seeds); wall-clock on a shared GPU
